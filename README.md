@@ -1,4 +1,4 @@
-# Edge Detection using NVIDIA CUDA kernels and cuDNN
+# Using CUDA for edge detection
 
 **Capstone Project of the Coursera
 [GPU Programming Specialization](https://www.coursera.org/specializations/gpu-programming)**
