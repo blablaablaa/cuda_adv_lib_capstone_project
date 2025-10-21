@@ -1,17 +1,13 @@
 # Using CUDA for edge detection
 
-**Capstone Project of the Coursera
+**Capstone Project for the Coursera
 [GPU Programming Specialization](https://www.coursera.org/specializations/gpu-programming)**
-
-This project is based on my submission for the [coursera cuda at scale](https://github.com/alex-n-braun/coursera_cuda_at_scale) project.
 
 | edges                              | generated from                   |
 | ---------------------------------- | -------------------------------- |
 | ![edges image](data/Lena_edge.png) | ![original image](data/Lena.png) |
 |                                    |                                  |
 
-An example video clip with a combined view of input- and output-data can be found on
-[YouTube](https://youtu.be/U0ag6_rI0iA).
 
 My **learning objectives** for this project:
 
@@ -31,7 +27,7 @@ My **learning objectives** for this project:
 
 ### Learning about cuDNN
 
-The [previous project](https://github.com/alex-n-braun/coursera_cuda_at_scale) implemented an image filter for edge detection based on the Sobel operator using the _NVidia Performance Primitives_ (NPP) library. To learn more about cuDNN, I
+To learn more about cuDNN, I
 attempted to replace NPP elements with cuDNN elements. Additionally, I wanted the
 result to become more visually appealing, so I modified the filter to draw thicker
 edges and inpaint them into the original image.
