@@ -3,11 +3,6 @@
 **Capstone Project for the Coursera
 [GPU Programming Specialization](https://www.coursera.org/specializations/gpu-programming)**
 
-| edges                              | generated from                   |
-| ---------------------------------- | -------------------------------- |
-| ![edges image](data/Lena_edge.png) | ![original image](data/Lena.png) |
-|                                    |                                  |
-
 
 My **learning objectives** for this project:
 
@@ -18,7 +13,6 @@ My **learning objectives** for this project:
 ## Table of Contents
 
 - [Key Concepts](#key-concepts)
-- [Runtime Improvements](#runtime-improvements)
 - [Project Overview and Build Instructions](#project-overview-and-build-instructions)
 
 
@@ -92,141 +86,6 @@ when processing only a single image. Therefore, I implemented a graph only in
 [`processVideo`](./src/edgeDetection.cpp#L64), which reads from a video
 clip, applies the graph frame-by-frame, and writes the frames back into a new video
 clip.
-
-## Runtime Improvements
-
-In the following sections, I compare different implementation stages of the edge detection program. My focus was on learning about CUDA's behavior with respect
-to runtime. For
-[each PR](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pulls?q=is%3Apr+)
-I carried out a simple runtime measurement of different parts of the program,
-which are presented in the tables below.
-
-### Reference Setup
-
-As stated before, the project is based on a
-[fork](https://github.com/alex-n-braun/coursera_cuda_at_scale). With the
-[first PR](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/1),
-I introduced the enhanced functionality of edge inpainting into the original
-image, while removing CUDA NPP and replacing the relevant
-functionalities with CUDA kernels and cuDNN convolutions the same time. This somewhat **naive implementation** does not account for any bottlenecks.
-
-The runtime measurement for a 10s video clip (1280x720, 25fps) produced the
-following table: **(elapsed time in nanoseconds)**
-
-|                  | Total [ns]  | per frame [ns] |
-| ---------------- | ----------- | -------------- |
-| incl. io         | 10675647389 | 42532459       |
-| excl. io         | 9140242967  | 36415310       |
-| gpu              | 8443221916  | 33638334       |
-| w/o conv. to int | 8401399737  | 33471712       |
-
-The two columns indicate the total runtime and the runtime per frame.
-The rows represent:
-
-- The runtime including file i/o, meaning the time required to read a frame from a
-  file, process the frame, and store it back to a file.
-- The runtime excluding file i/o, but including memory transfers between CPU and
-  GPU.
-- The runtime of GPU operations only, which includes data conversion steps between
-  integer-quantized images and a float representation.
-- The runtime of the GPU operations, excluding data conversion steps.
-
-The above table serves as the reference measurement. The following sections outline
-optimization steps that aim to reduce the runtime.
-
-### Reduction in the Number of Memory Allocations
-
-The [next relevant PR](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/4)
-introduces two changes; therefore I will refer to individual commits.
-
-When performing image manipulation tasks on the GPU, it is necessary to allocate
-memory. The naive implementation handles this inefficiently: for each call
-to the filter function,
-[temporary memory is allocated](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/4/commits/20867d9817edfb78ae342d7e6af7d7a5f2514d12#diff-5a70dea16dccea0d8b3f2710191bb64be65cbeba4e2914f1e3ce5df155073480L103),
-and before exiting the
-function, it is freed again. The commit moves the temporary memory to
-[mutable
-members](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/4/commits/20867d9817edfb78ae342d7e6af7d7a5f2514d12#diff-5a70dea16dccea0d8b3f2710191bb64be65cbeba4e2914f1e3ce5df155073480R116)
-of the `Filter` class.
-
-This results in a runtime improvement of approximately 5% for GPU-based
-computations, excluding float<=>int conversions.
-
-|                  | Total [ns] | per frame [ns] |
-| ---------------- | ---------- | -------------- |
-| incl. io         | 9823949656 | 39139241       |
-| excl. io         | 8311901920 | 33115147       |
-| gpu              | 7938228023 | 31626406       |
-| w/o conv. to int | 7930628447 | 31596129       |
-
-### Creation and Destruction of Handles and Descriptors
-
-At a higher level, it is necessary to manage various handles and descriptors, which
-are created and destroyed using functions like
-[`cudnnCreate`](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/api/cudnn-graph-library.html#cudnncreate) /
-[`cudnnDestroy`](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/api/cudnn-graph-library.html#cudnndestroy) ,
-[`cudnnCreateConvolutionDescriptor`](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/api/cudnn-cnn-library.html#cudnncreateconvolutiondescriptor) /
-[`cudnnDestroyConvolutionDescriptor`](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/api/cudnn-cnn-library.html#cudnndestroyconvolutiondescriptor)
-etc. Again, the naive implementation handles this on a frame-by-frame level. It
-turns out that this introduces significant overhead.
-
-The [relevant commit](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/4/commits/6a9dc076af0cefb6c5852e8159c76b5499228c70)
-moves the creation and destruction of the descriptors directly related to the
-convolution into the constructor and destructor of the class. Since the cuDNN
-handle is needed by all cuDNN operations, I introduce the
-[`GpuSession`](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/4/commits/6a9dc076af0cefb6c5852e8159c76b5499228c70#diff-aa2864769634e4c25e08571438c2e9ed52d5efd14f76ec15f5a0791156aede9cR19)
-class.
-
-**This results additional frame-processing runtime improvement of approximately 81%** (wow!).
-
-|                  | Total [ns] | per frame [ns] |
-| ---------------- | ---------- | -------------- |
-| incl. io         | 5260741121 | 20959127       |
-| excl. io         | 2015754933 | 8030896        |
-| gpu              | 1509760936 | 6014983        |
-| w/o conv. to int | 1488816208 | 5931538        |
-
-Clearly, minimizing unnecessary cuDNN handle creation has a major impact on
-performance. Further investigation into the runtime impact of creating and destroying `cudnnHandle_t` and other objects, such as `cudnnTensorDescriptor_t` could provide additional insights.
-
-### Caching
-
-It is possible to further
-[reduce operations](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/5) that may be
-redundant, such as repeatedly setting image width and height , even though these
-should remain constant for an entire video clip. This results in an additional
-runtime improvement of approximately 2–3%.
-
-|                  | Total [ns]     | per frame [ns] |
-| ---------------- | -------------- | -------------- |
-| incl. io         | 4944791394     | 19700364       |
-| excl. io         | 1908645536     | 7604165        |
-| **gpu**          | **1460924323** | **5820415**    |
-| w/o conv. to int | 1448427256     | 5770626        |
-
-The row **gpu** is marked bold as it serves as the reference for the next step, as
-explained below.
-
-### CUDA graph
-
-The [final step](https://github.com/alex-n-braun/coursera_cuda_advanced_libraries/pull/6)
-in optimizing the GPU part is to add all relevant operations to a CUDA _graph_, which is then replayed once per frame during the video processing. This results in
-a further runtime improvement of roughly 4-5%.
-Note that it is no longer possible to differentiate between individual steps
-running inside the graph (such as excluding type casts, as done in the previous
-performance measurement). Doing so would require adding performance measurements _inside_ the graph, which I do not (yet) know how to implement. However, running
-the graph _including_ the type casts still takes less time than the previous imperative implementation, even when _excluding_ the type casts in the runtime
-measurement.
-
-Additionally, since CPU-based branching cannot be recorded within the graph, the
-caching mechanism for setting image width and height had to be removed. It is now
-assumed that the image resolution remains fixed throughout the entire run.
-
-|          | Total [ns]     | per frame [ns] |
-| -------- | -------------- | -------------- |
-| incl. io | 4778412190     | 19037498       |
-| excl. io | 1795590019     | 7153745        |
-| **gpu**  | **1391767538** | **5544890**    |
 
 ## Project Overview and Build Instructions
 
@@ -324,3 +183,5 @@ make clean
 This will remove all files in the bin/ directory.
 
 
+##The Video result 
+https://drive.google.com/file/d/1MNbIKuu8FbBDxNHocPlZPX_vlck4GJKw/view?usp=sharing
