@@ -17,67 +17,10 @@ My **learning objectives** for this project:
 
 ## Table of Contents
 
-- [Learning Objectives](#learning-objectives)
 - [Key Concepts](#key-concepts)
 - [Runtime Improvements](#runtime-improvements)
 - [Project Overview and Build Instructions](#project-overview-and-build-instructions)
-- [Final Words](#final-words)
 
-## Learning Objectives
-
-### Learning about cuDNN
-
-To learn more about cuDNN, I
-attempted to replace NPP elements with cuDNN elements. Additionally, I wanted the
-result to become more visually appealing, so I modified the filter to draw thicker
-edges and inpaint them into the original image.
-
-It turns out that cuDNN does not support some functions available in the
-NPP lib -- surprise. Bitwise operations, integer-to-float conversions, and similar
-functions can not be easily translated to cuDNN. This is fine since what I am
-doing here is somewhat a misuse of cuDNN, as it is designed for implementing
-neural networks, where differentiability is essential.
-
-Of course, it was not difficult to implement the missing parts as plain CUDA kernels.
-
-What I also learned: many functions in cuDNN were deprecated in cuDNN version 9.0.
-There is an [overview](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/api/overview.html)
-explaining a modernization effort where a cuDNN Graph API was introduced in version 8.0. It also might be valuable to have a look into the [cuDNN release
-notes](https://docs.nvidia.com/deeplearning/cudnn/backend/v9.7.0/release-notes.html)
-in order to better understand what is going on.
-
-### Learning about CUDA graphs
-
-There are several recent developments in the CUDA space that are not covered in this course. I already mentioned the introduction of cuDNN graphs and the deprecation of several imperative cuDNN functions. Another interesting topic that I did not learn about in the Coursera GPU Programming Specialization is CUDA
-graphs.
-
-CUDA graphs allow for the recording of a predefined set of GPU operations that can then be executed repeatedly. There are several benefits: first, the graph manages the execution order. Each (sequential) call to a kernel creates a graph node, and CUDA can ultimately determine the dependency structure, even allowing for parallel execution of nodes that were recorded sequentially. Second, after the graph has been recorded, intermediate CPU-GPU interaction is removed: when executing the graph, everything runs on the GPU, which provides some performance benefits (as documented below).
-
-Of course, there are also some drawbacks: once recorded, a graph is quite static. If the workflow includes (CPU-based) branching logic, this cannot be incorporated into the graph. Also, dynamic memory management is not possible: the necessary allocation steps must be performed before recording the graph.
-
-### Performance Impact
-
-I started this repo as a fork of my submission for the Coursera-course [CUDA at
-scale for the Enterprise](https://github.com/alex-n-braun/coursera_cuda_at_scale).
-
-As a first step, I altered the functionality to create a more visually appealing
-representation of the edges, while replacing NPP with both plain CUDA kernels and
-cuDNN calls.
-The subsequent steps focused on reducing the runtime in various ways, including the use of CUDA graphs.
-
-I conducted performance measurements by processing a [10s video
-clip](https://youtu.be/U0ag6_rI0iA). (The clip presented on YouTube is post-processed into a combined view of input- and output-data). The achieved
-performance improvements are quite impressive: starting from roughly 42ms
-processing time per video frame with a naive implementation, I was finally able
-to achieve a total runtime of roughly 20ms, which is an improvement of more than
-50%. This measurement includes file io and memory transfer between CPU and GPU.
-
-If we consider the runtime of GPU operations alone, the runtime dropped from
-roughly 33ms to less than 6ms, which represents a reduction of 82%! Still, I am
-convinced that a seasoned CUDA developer (which I am not yet) will be able to
-optimize this further.
-
-I will discuss each step in more detail below in the [Runtime Improvements](#runtime-improvements) section.
 
 ## Key Concepts
 
@@ -285,20 +228,6 @@ assumed that the image resolution remains fixed throughout the entire run.
 | excl. io | 1795590019     | 7153745        |
 | **gpu**  | **1391767538** | **5544890**    |
 
-### What else?
-
-There is much more that could be optimized:
-
-- Use of pinned memory
-- Implementation using `int` quantization
-- Potential use of asynchronous operations
-- Inclusion of mem copy operations into the cuda graph
-- Batch processing
-- Multithreading on CPU to optimize I/O performance
-- ...
-
-However, since I already have spent quite some time with this project, I will stop here for now.
-
 ## Project Overview and Build Instructions
 
 ### Code Organization
@@ -394,21 +323,4 @@ make clean
 
 This will remove all files in the bin/ directory.
 
-## Final Words
 
-This project has deepened my understanding of GPU programming, CUDA, and performance optimization. The Coursera GPU Programming Specialization provided a solid foundation, covering:
-
-- Concurrent programming with GPUs
-- Parallel programming using CUDA
-- Scaling CUDA applications
-- Utilizing advanced CUDA libraries
-
-However, several key areas were not covered, particularly:
-
-- Modern CUDA Features: Advancements like CUDA Graphs for optimizing execution.
-- Tool Landscape:
-   - Profiling: NVIDIA Nsight Systems & Compute
-   - Benchmarking: Performance assessment tools
-   - Debugging: Advanced GPU debugging utilities
-
-While this project and coursework offered a strong start, ongoing learning and hands-on experimentation will be essential for mastering modern GPU development.
